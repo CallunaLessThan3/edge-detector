@@ -16,7 +16,7 @@
 #define RGB_COMPONENT_COLOR 255
 
 typedef struct {
-      unsigned char r, g, b;
+    unsigned char r, g, b;
 } PPMPixel;
 
 struct parameter {
@@ -58,19 +58,17 @@ void *compute_laplacian_threadfn(void *params) {
     return NULL;
 }
 
+
 /* Apply the Laplacian filter to an image using threads.
    Each thread shall do an equal share of the work, i.e. work=height/number of threads.
    If the size is not even, the last thread shall take the rest of the work.
    Compute the elapsed time and store it in *elapsedTime (Read about gettimeofday).
    Return: result (filtered image) */
 PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, double *elapsedTime) {
-
     PPMPixel *result;
-
-
-
     return result;
 }
+
 
 /* Create a new P6 file to save the filtered image in.
    Write the header block
@@ -80,9 +78,9 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
    then write the image data.
    The name of the new file shall be "filename" (the second argument). */
 void write_image(PPMPixel *image, char *filename, unsigned long int width, unsigned long int height) {
-
-
+    return;
 }
+
 
 /* Skips any whitespace and any comments in that whitespace
    whitespace: { ' ', '\n', '\r', '\t' }
@@ -120,8 +118,8 @@ static void skip_whitespace_comments(FILE* file) {
    Return: pointer to PPMPixel that has the pixel data of the input image (filename).
    The pixel data is stored in scanline order from left to right (up to bottom) in 3-byte chunks (r g b values for each pixel) encoded as binary numbers. */
 PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned long int *height) {
+    // TODO: this uses 5 freads, maybe try and reduce that
     int err;
-
     const char *modes = "r";
     FILE *file = fopen(filename, modes);
     if (file == NULL) {
@@ -229,9 +227,11 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
         exit(-1);
     }
 
+
     fclose(file);
     return img;
 }
+
 
 /* The thread function that manages an image file.
    Read an image file that is passed as an argument at runtime.
@@ -242,6 +242,8 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 void *manage_image_file(void *args) {
     return 0;
 }
+
+
 /* The driver of the program. Check for the correct number of arguments. If wrong print the message: "Usage ./a.out filename[s]"
    It shall accept n filenames as arguments, separated by whitespace, e.g., ./a.out file1.ppm file2.ppm    file3.ppm
    It will create a thread for each input file to manage.
