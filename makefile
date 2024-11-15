@@ -1,5 +1,5 @@
 CC     = gcc
-CFLAGS =
+CFLAGS = -g
 DEPS   = #.h
 OBJ    = edge_detector.o
 
