@@ -7,13 +7,16 @@
 #include <ctype.h>
 
 
-#define LAPLACIAN_THREADS 4     //change the number of threads as you run your concurrency experiment
+#define LAPLACIAN_THREADS (4)     //change the number of threads as you run your concurrency experiment
 
 /* Laplacian filter is 3 by 3 */
-#define FILTER_WIDTH 3
-#define FILTER_HEIGHT 3
+#define FILTER_WIDTH (3)
+#define FILTER_HEIGHT (3)
 
-#define RGB_COMPONENT_COLOR 255
+#define RGB_COMPONENT_COLOR (255)
+
+#define PIXEL_SIZE (3)
+static const char PPM_SIG[] = "P6";
 
 typedef struct {
     unsigned char r, g, b;
@@ -78,6 +81,41 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
    then write the image data.
    The name of the new file shall be "filename" (the second argument). */
 void write_image(PPMPixel *image, char *filename, unsigned long int width, unsigned long int height) {
+    const char *format = "%s\n%lu %lu\n%d\n";
+    const int header_len = snprintf(NULL, 0, format, PPM_SIG, width, height, RGB_COMPONENT_COLOR);
+    const size_t pixels = width * height;
+    int count;
+
+    const char *modes = "w";
+    FILE *file = fopen(filename, modes);
+    if (!file) {
+        perror("error opening file");
+        exit(-1);
+    }
+
+
+    /* header */
+    char *header = calloc(header_len+1, 1);
+    snprintf(header, header_len+1, format, PPM_SIG, width, height, RGB_COMPONENT_COLOR);
+    count = fwrite(header, sizeof(char), header_len, file);
+    if (count != header_len) {
+        perror("error writing data");
+        fclose(file);
+        exit(-1);
+    }
+    free(header);
+
+
+    /* data */
+    count = fwrite(image, PIXEL_SIZE, pixels, file);
+    if (count != pixels) {
+        perror("error writing data");
+        fclose(file);
+        exit(-1);
+    }
+
+
+    fclose(file);
     return;
 }
 
@@ -90,8 +128,10 @@ static void skip_whitespace_comments(FILE* file) {
     int done = 0;
     while (!done) {
         if (isspace(ch)) {
+            // skips whitespace
             while (isspace(ch)) { ch = fgetc(file); }
         } else if (ch == '#') {
+            // skips line after comment
             while (ch != '\n') { ch = fgetc(file); }
         } else {
             done = 1;
@@ -118,11 +158,13 @@ static void skip_whitespace_comments(FILE* file) {
    Return: pointer to PPMPixel that has the pixel data of the input image (filename).
    The pixel data is stored in scanline order from left to right (up to bottom) in 3-byte chunks (r g b values for each pixel) encoded as binary numbers. */
 PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned long int *height) {
-    // TODO: this uses 5 freads, maybe try and reduce that
-    int err;
+    const size_t fmt_len = 2;
+    const size_t max_cv_len = 3;
+    int count;
+
     const char *modes = "r";
     FILE *file = fopen(filename, modes);
-    if (file == NULL) {
+    if (!file) {
         perror("error opening file");
         exit(-1);
     }
@@ -130,9 +172,8 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
     /* get image format */
     char fmt[3] = "";
-    size_t fmt_len = 2;
-    err = fread(&fmt, sizeof(char), fmt_len, file);
-    if (err != fmt_len) {
+    count = fread(&fmt, sizeof(char), fmt_len, file);
+    if (count != fmt_len) {
         perror("error reading image format");
         fclose(file);
         exit(-1);
@@ -140,8 +181,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
 
     /* check image format matches */
-    const char *ppm_fmt = "P6";
-    if(strcmp(fmt, ppm_fmt)) {
+    if(strcmp(fmt, PPM_SIG)) {
         fprintf(stderr, "not a ppm file");
         exit(-1);
     }
@@ -160,8 +200,8 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     fseek(file, -(width_l+1), SEEK_CUR);
     char *width_s = calloc(width_l+1, sizeof(char));
 
-    err = fread(width_s, sizeof(char), width_l, file);
-    if (err != width_l) {
+    count = fread(width_s, sizeof(char), width_l, file);
+    if (count != width_l) {
         perror("error reading width");
         fclose(file);
         exit(-1);
@@ -182,8 +222,8 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     fseek(file, -(height_l+1), SEEK_CUR);
     char *height_s = calloc(height_l+1, sizeof(char));
 
-    err = fread(height_s, sizeof(char), height_l, file);
-    if (err != height_l) {
+    count = fread(height_s, sizeof(char), height_l, file);
+    if (count != height_l) {
         perror("error reading height");
         fclose(file);
         exit(-1);
@@ -196,10 +236,9 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
     /* check max color value */
     int max_cv;
-    size_t max_cvl = 3;
-    char *max_cv_s = calloc(max_cvl+1, sizeof(char));
-    err = fread(max_cv_s, sizeof(char), max_cvl, file);
-    if (err != max_cvl) {
+    char *max_cv_s = calloc(max_cv_len+1, sizeof(char));
+    count = fread(max_cv_s, sizeof(char), max_cv_len, file);
+    if (count != max_cv_len) {
         perror("error reading maximum color value");
         fclose(file);
         exit(-1);
@@ -217,11 +256,10 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
 
     /* read pixel data */
-    size_t pixel_sz = 3;
-    size_t pixels = (*height) * (*width);
-    PPMPixel *img = malloc(pixels * pixel_sz);
-    err = fread(img, pixel_sz, pixels, file);
-    if (err != pixels) {
+    const size_t pixels = (*height) * (*width);
+    PPMPixel *img = malloc(pixels * PIXEL_SIZE);
+    count = fread(img, PIXEL_SIZE, pixels, file);
+    if (count != pixels) {
         perror("error reading image data");
         fclose(file);
         exit(-1);
@@ -240,6 +278,9 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
    Save the result image in a file called laplaciani.ppm, where i is the image file order in the passed arguments.
    Example: the result image of the file passed third during the input shall be called "laplacian3.ppm". */
 void *manage_image_file(void *args) {
+    // read_image(image.ppm)
+
+
     return 0;
 }
 
@@ -249,12 +290,15 @@ void *manage_image_file(void *args) {
    It will create a thread for each input file to manage.
    It will print the total elapsed time in .4 precision seconds(e.g., 0.1234 s). */
 int main(int argc, char *argv[]) {
-    const char *filename = "image.ppm";
+    const char *in_filename = "image.ppm";
+    const char *out_filename = "out_image.ppm";
     unsigned long width = 0;
     unsigned long height = 0;
-
     PPMPixel *image;
-    image = read_image(filename, &width, &height);
+
+    image = read_image(in_filename, &width, &height);
+    write_image(image, (char*)out_filename, width, height);
+
     free(image);
 
     return 0;
