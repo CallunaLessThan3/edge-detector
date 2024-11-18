@@ -17,18 +17,20 @@
 
 #define PIXEL_SIZE (3)
 static const char PPM_SIG[] = "P6";
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {
     unsigned char r, g, b;
 } PPMPixel;
 
+// for each thread, given a parameter
 struct parameter {
-    PPMPixel *image;         //original image pixel data
-    PPMPixel *result;        //filtered image pixel data
-    unsigned long int w;     //width of image
-    unsigned long int h;     //height of image
-    unsigned long int start; //starting point of work
-    unsigned long int size;  //equal share of work (almost equal if odd)
+    PPMPixel *image;         //original image pixel data                 // const
+    PPMPixel *result;        //filtered image pixel data                 // not const
+    unsigned long int w;     //width of image                            // const
+    unsigned long int h;     //height of image                           // const
+    unsigned long int start; //starting point of work                    // const
+    unsigned long int size;  //equal share of work (almost equal if odd) // const
 };
 
 
@@ -49,6 +51,28 @@ double total_elapsed_time = 0;
    Truncate values smaller than zero to zero and larger than 255 to 255.
    The results are summed together to yield a single output value that is placed in the output image at the location of the pixel being processed on the input. */
 void *compute_laplacian_threadfn(void *params) {
+    struct parameter *t_args = (struct parameter*)params;
+
+    /* use these equations to do the math of image filtering
+      - x_coordinate = ( iteratorImageWidth - FILTER_WIDTH / 2 + iteratorFilterWidth + imageWidth) % imageWidth
+      - y_coordinate = (iteratorImageHeight - FILTER_HEIGHT / 2 + iteratorFilterHeight + imageHeight) % imageHeight
+      - red+= image[y_coordinate * imageWidth + x_coordinate].r * laplacian[iteratorFilterHeight][iteratorFilterWidth]
+      - green+= image[y_coordinate * imageWidth + x_coordinate].g * laplacian[iteratorFilterHeight][iteratorFilterWidth]
+      - blue+= image[y_coordinate * imageWidth + x_coordinate].b * laplacian[iteratorFilterHeight][iteratorFilterWidth]
+      - red, green and blue must not be of type char to avoid wrapping.
+    */
+
+    /* use these equations to store the new pixel values in the result image after the inner nested loop is complete
+      - result[iteratorImageHeight * imageWidth + iteratorImageWidth].r =red
+      - result[interatorImageHeight * imageWidth + iteratorImageWidth].g = green
+      - result[interatorImageHeight * imageWidth + iteratorImageWidth].b = blue
+      - pixel values shall be in the range of 0 to 255.
+    */
+
+    printf("loc: %p\n", t_args);
+    printf("work: %lu\n", t_args->size);
+    pthread_exit(NULL);
+
     int laplacian[FILTER_WIDTH][FILTER_HEIGHT] =
     {
         {-1, -1, -1},
@@ -68,7 +92,37 @@ void *compute_laplacian_threadfn(void *params) {
    Compute the elapsed time and store it in *elapsedTime (Read about gettimeofday).
    Return: result (filtered image) */
 PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, double *elapsedTime) {
+    const int work = h/LAPLACIAN_THREADS;
+    pthread_t tids[LAPLACIAN_THREADS];
+    struct parameter t_structs[LAPLACIAN_THREADS];
     PPMPixel *result;
+    int err;
+
+    for (int i=0; i<LAPLACIAN_THREADS; i++) {
+        struct parameter *t_args = &t_structs[i];
+        pthread_t *tid = &tids[i];
+
+        // assign params
+        t_args->image = image;
+        t_args->result = result;
+        t_args->w = w;
+        t_args->h = h;
+        t_args->start = (work * i);
+        t_args->size = (i == LAPLACIAN_THREADS-1) ? (h - t_args->start) : (work);
+
+        // make threads
+        err = pthread_create(tid, NULL, compute_laplacian_threadfn, t_args);
+        if (err != 0) {
+            perror("error creating threads");
+            exit(EXIT_FAILURE);
+        }
+
+        // join threads
+        pthread_join(*tid, NULL);
+    }
+
+
+    // elapsedTime += x
     return result;
 }
 
@@ -90,18 +144,19 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     FILE *file = fopen(filename, modes);
     if (!file) {
         perror("error opening file");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
 
     /* header */
     char *header = calloc(header_len+1, 1);
     snprintf(header, header_len+1, format, PPM_SIG, width, height, RGB_COMPONENT_COLOR);
+
     count = fwrite(header, sizeof(char), header_len, file);
     if (count != header_len) {
         perror("error writing data");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     free(header);
 
@@ -111,7 +166,7 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     if (count != pixels) {
         perror("error writing data");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
 
@@ -166,7 +221,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     FILE *file = fopen(filename, modes);
     if (!file) {
         perror("error opening file");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
 
@@ -176,14 +231,14 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     if (count != fmt_len) {
         perror("error reading image format");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
 
     /* check image format matches */
     if(strcmp(fmt, PPM_SIG)) {
         fprintf(stderr, "not a ppm file");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     skip_whitespace_comments(file);
@@ -204,7 +259,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     if (count != width_l) {
         perror("error reading width");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     *width = strtoul(width_s, NULL, 10);
     free(width_s);
@@ -226,7 +281,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     if (count != height_l) {
         perror("error reading height");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     *height = strtoul(height_s, NULL, 10);
     free(height_s);
@@ -241,7 +296,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     if (count != max_cv_len) {
         perror("error reading maximum color value");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     max_cv = atoi(max_cv_s);
     free(max_cv_s);
@@ -249,7 +304,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     if (max_cv != RGB_COMPONENT_COLOR) {
         fprintf(stderr, "not rgb");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     skip_whitespace_comments(file);
@@ -262,7 +317,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     if (count != pixels) {
         perror("error reading image data");
         fclose(file);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
 
@@ -298,6 +353,7 @@ int main(int argc, char *argv[]) {
 
     image = read_image(in_filename, &width, &height);
     write_image(image, (char*)out_filename, width, height);
+    apply_filters(image, width, height, NULL);
 
     free(image);
 
