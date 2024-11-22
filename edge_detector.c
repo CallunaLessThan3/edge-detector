@@ -20,6 +20,8 @@
 static const char PPM_SIG[] = "P6";
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static const char USAGE[] = "Usage: edge_detector <image1.ppm> <image2.ppm> ...\n";
+
 typedef struct {
     unsigned char r, g, b;
 } PPMPixel;
@@ -127,7 +129,7 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         // make threads
         err = pthread_create(tid, NULL, compute_laplacian_threadfn, t_args);
         if (err != 0) {
-            perror("error creating threads");
+            perror("error creating threads (compute_laplacian_threadfn)");
             exit(EXIT_FAILURE);
         }
 
@@ -135,7 +137,7 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
     }
 
 
-    // elapsedTime += x
+    // TODO: elapsedTime += x
     return result;
 }
 
@@ -346,9 +348,9 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
    Save the result image in a file called laplaciani.ppm, where i is the image file order in the passed arguments.
    Example: the result image of the file passed third during the input shall be called "laplacian3.ppm". */
 void *manage_image_file(void *args) {
-    // read_image(image.ppm)
-
-
+    // might need to mutex this
+    char *filename = (char*)args;
+    printf("filename: %s\n", filename);
     return 0;
 }
 
@@ -358,6 +360,33 @@ void *manage_image_file(void *args) {
    It will create a thread for each input file to manage.
    It will print the total elapsed time in .4 precision seconds(e.g., 0.1234 s). */
 int main(int argc, char *argv[]) {
+    int err;
+    if (argc < 2) {
+        fprintf(stderr, "Error: Not enough arguments.\n%s", USAGE);
+        exit(EXIT_FAILURE);
+    }
+
+
+    /* loop over each argument, create thread for each */
+    pthread_t *tids = malloc(argc * sizeof(pthread_t));
+
+    for (size_t i=1; i < argc; i++) {
+        char *filename = argv[i];
+        pthread_t *tid = &tids[i];
+
+        err = pthread_create(tid, NULL, manage_image_file, filename);
+        if (err != 0) {
+            perror("error creating threads (manage_image_file)");
+            exit(EXIT_FAILURE);
+        }
+
+        pthread_join(*tid, NULL);
+    }
+
+    free(tids);
+
+
+    /*
     const char *in_filename = "image.ppm";
     const char *out_filename = "out_image.ppm";
     unsigned long width = 0;
@@ -370,6 +399,7 @@ int main(int argc, char *argv[]) {
 
     free(image);
     free(result);
+    */
 
     return 0;
 }
