@@ -20,11 +20,13 @@
 static const char PPM_SIG[] = "P6";
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+
 static const char USAGE[] = "Usage: edge_detector <image1.ppm> <image2.ppm> ...\n";
 
 typedef struct {
     unsigned char r, g, b;
 } PPMPixel;
+
 
 // for each thread, given a parameter
 struct parameter {
@@ -348,10 +350,20 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
    Save the result image in a file called laplaciani.ppm, where i is the image file order in the passed arguments.
    Example: the result image of the file passed third during the input shall be called "laplacian3.ppm". */
 void *manage_image_file(void *args) {
-    // might need to mutex this
-    char *filename = (char*)args;
-    printf("filename: %s\n", filename);
-    return 0;
+    struct file_name_args *file = (struct file_name_args*)args;
+    unsigned long width = 0;
+    unsigned long height = 0;
+    PPMPixel *image, *result;
+
+    image = read_image(file->input_file_name, &width, &height);
+    result = apply_filters(image, width, height, NULL); // elapsed time here
+    write_image(result, file->output_file_name, width, height);
+
+    free(image);
+    free(result);
+
+    pthread_exit(NULL);
+    return NULL;
 }
 
 
@@ -366,15 +378,21 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    pthread_t *tids = malloc(argc * sizeof(pthread_t)); // not sure why i cant use (argc-1 * sizeof()) instead
+    struct file_name_args *files = malloc(argc * sizeof(struct file_name_args));
+
+    const char *format = "laplacian%lu.ppm";
+    const size_t output_filename_max = 19; // buffer size is 20, 1 for null byte
 
     /* loop over each argument, create thread for each */
-    pthread_t *tids = malloc(argc * sizeof(pthread_t));
-
-    for (size_t i=1; i < argc; i++) {
-        char *filename = argv[i];
+    for (size_t i=0; i < argc-1; i++) {
         pthread_t *tid = &tids[i];
+        struct file_name_args *file = &files[i];
 
-        err = pthread_create(tid, NULL, manage_image_file, filename);
+        file->input_file_name = argv[i+1];
+        snprintf(file->output_file_name, output_filename_max, format, i+1);
+
+        err = pthread_create(tid, NULL, manage_image_file, file);
         if (err != 0) {
             perror("error creating threads (manage_image_file)");
             exit(EXIT_FAILURE);
@@ -384,23 +402,9 @@ int main(int argc, char *argv[]) {
     }
 
     free(tids);
+    free(files);
 
-
-    /*
-    const char *in_filename = "image.ppm";
-    const char *out_filename = "out_image.ppm";
-    unsigned long width = 0;
-    unsigned long height = 0;
-    PPMPixel *image, *result;
-
-    image = read_image(in_filename, &width, &height);
-    result = apply_filters(image, width, height, NULL);
-    write_image(result, (char*)out_filename, width, height);
-
-    free(image);
-    free(result);
-    */
-
+    // TODO: print elapsed time
     return 0;
 }
 
