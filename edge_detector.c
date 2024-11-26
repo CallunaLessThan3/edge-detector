@@ -7,41 +7,33 @@
 #include <ctype.h>
 
 
-// change the number of threads as you run your concurrency experiment
 #define LAPLACIAN_THREADS (4)
-
-/* Laplacian filter is 3 by 3 */
 #define FILTER_WIDTH (3)
 #define FILTER_HEIGHT (3)
-
 #define RGB_COMPONENT_COLOR (255)
-
 #define PIXEL_SIZE (3)
+
 static const char PPM_SIG[] = "P6";
+static const char USAGE[] = "Usage: edge_detector <image1.ppm> <image2.ppm> ...\n";
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-
-static const char USAGE[] = "Usage: edge_detector <image1.ppm> <image2.ppm> ...\n";
 
 typedef struct {
     unsigned char r, g, b;
 } PPMPixel;
 
-
-// for each thread, given a parameter
 struct parameter {
-    PPMPixel *image;         // original image pixel data                 // const
-    PPMPixel *result;        // filtered image pixel data                 // not const
-    unsigned long int w;     // width of image                            // const
-    unsigned long int h;     // height of image                           // const
-    unsigned long int start; // starting point of work                    // const
-    unsigned long int size;  // equal share of work (almost equal if odd) // const
+    PPMPixel *image;         // original image pixel data
+    PPMPixel *result;        // filtered image pixel data
+    unsigned long int w;     // width of image
+    unsigned long int h;     // height of image
+    unsigned long int start; // starting point of work
+    unsigned long int size;  // equal share of work (almost equal if odd)
 };
 
-
 struct file_name_args {
-    char *input_file_name;      //e.g., file1.ppm
-    char output_file_name[20];  //will take the form laplaciani.ppm, e.g., laplacian1.ppm
+    char *input_file_name;      // e.g., file1.ppm
+    char output_file_name[20];  // will take the form laplaciani.ppm, e.g., laplacian1.ppm
 };
 
 
@@ -57,8 +49,7 @@ double total_elapsed_time = 0;
    The results are summed together to yield a single output value that is placed in the output image at the location of the pixel being processed on the input. */
 void *compute_laplacian_threadfn(void *params) {
     struct parameter *t_args = (struct parameter*)params;
-    const int laplacian[FILTER_WIDTH][FILTER_HEIGHT] =
-    {
+    const int laplacian[FILTER_WIDTH][FILTER_HEIGHT] = {
         {-1, -1, -1},
         {-1,  8, -1},
         {-1, -1, -1}
@@ -116,6 +107,7 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
     PPMPixel *result = malloc(w * h * PIXEL_SIZE);
     int err;
 
+    /* create threads to apply laplacian filter */
     for (int i=0; i<LAPLACIAN_THREADS; i++) {
         struct parameter *t_args = &t_structs[i];
         pthread_t *tid = &tids[i];
@@ -126,9 +118,9 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         t_args->w = w;
         t_args->h = h;
         t_args->start = (work * i);
-        t_args->size = (i == LAPLACIAN_THREADS-1) ? (h - t_args->start)  : (work);
+        t_args->size = (i == LAPLACIAN_THREADS-1) ? (h - t_args->start) : (work);
 
-        // make threads
+        // create threads
         err = pthread_create(tid, NULL, compute_laplacian_threadfn, t_args);
         if (err != 0) {
             perror("error creating threads (compute_laplacian_threadfn)");
@@ -165,7 +157,7 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     }
 
 
-    /* header */
+    /* write header */
     char *header = calloc(header_len+1, 1);
     snprintf(header, header_len+1, format, PPM_SIG, width, height, RGB_COMPONENT_COLOR);
 
@@ -178,7 +170,7 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     free(header);
 
 
-    /* data */
+    /* write image data */
     count = fwrite(image, PIXEL_SIZE, pixels, file);
     if (count != pixels) {
         perror("error writing data");
@@ -194,11 +186,10 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
 
 /* Skips any whitespace and any comments in that whitespace
    whitespace: { ' ', '\n', '\r', '\t' }
-   file's buffer pointer address will be the next non-whitespace character. */
+   file's buffer pointer will point at the next non-whitespace character. */
 static void skip_whitespace_comments(FILE* file) {
     char ch = fgetc(file);
-    int done = 0;
-    while (!done) {
+    while (1) {
         if (isspace(ch)) {
             // skips whitespace
             while (isspace(ch)) { ch = fgetc(file); }
@@ -206,7 +197,7 @@ static void skip_whitespace_comments(FILE* file) {
             // skips line after comment
             while (ch != '\n') { ch = fgetc(file); }
         } else {
-            done = 1;
+            break;
         }
     }
 
@@ -242,7 +233,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     }
 
 
-    /* get image format */
+    /* read image format */
     char fmt[3] = "";
     count = fread(&fmt, sizeof(char), fmt_len, file);
     if (count != fmt_len) {
@@ -261,8 +252,8 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     skip_whitespace_comments(file);
 
 
-    /* get height and width */
-    // get width
+    /* read width and height */
+    // width
     char ch_w;
     size_t width_l = 0;
     while (ch_w = fgetc(file), !isspace(ch_w)) {
@@ -284,7 +275,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     skip_whitespace_comments(file);
 
 
-    // get height
+    // height
     char ch_l;
     size_t height_l = 0;
     while (ch_l = fgetc(file), !isspace(ch_l)) {
@@ -306,7 +297,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     skip_whitespace_comments(file);
 
 
-    /* check max color value */
+    /* read max color value */
     int max_cv;
     char *max_cv_s = calloc(max_cv_len+1, sizeof(char));
     count = fread(max_cv_s, sizeof(char), max_cv_len, file);
@@ -327,7 +318,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     skip_whitespace_comments(file);
 
 
-    /* read pixel data */
+    /* read image data */
     const size_t pixels = (*height) * (*width);
     PPMPixel *img = malloc(pixels * PIXEL_SIZE);
     count = fread(img, PIXEL_SIZE, pixels, file);
@@ -384,7 +375,7 @@ int main(int argc, char *argv[]) {
     const char *format = "laplacian%lu.ppm";
     const size_t output_filename_max = 19; // buffer size is 20, 1 for null byte
 
-    /* loop over each argument, create thread for each */
+    /* loop over each input file, create thread for each */
     for (size_t i=0; i < argc-1; i++) {
         pthread_t *tid = &tids[i];
         struct file_name_args *file = &files[i];
@@ -405,6 +396,7 @@ int main(int argc, char *argv[]) {
     free(files);
 
     // TODO: print elapsed time
+    // TODO: write atexit function
     return 0;
 }
 
