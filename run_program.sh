@@ -1,11 +1,9 @@
 #!/bin/bash
 
-USAGE="Usage: ./run_program.sh <directory>"
 
 if [[ $# != 1 || ! -d $1 ]]; then
-    echo $USAGE
+    echo "Usage: ./run_program.sh <directory>"
     exit
 fi
 
-ARGS=$1/*.ppm
-./edge_detector $ARGS
+./edge_detector $1/*.ppm
