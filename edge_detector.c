@@ -14,9 +14,8 @@
 #define PIXEL_SIZE (3)
 
 static const char PPM_SIG[] = "P6";
-static const char USAGE[] = "Usage: edge_detector <image1.ppm> <image2.ppm> ...\n";
+static const char USAGE[] = "Usage: ./edge_detector filename[s]\n";
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
 
 typedef struct {
     unsigned char r, g, b;
@@ -105,7 +104,14 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
     pthread_t tids[LAPLACIAN_THREADS];
     const int work = h/LAPLACIAN_THREADS;
     PPMPixel *result = malloc(w * h * PIXEL_SIZE);
+    struct timeval tv;
     int err;
+
+    gettimeofday(&tv, NULL);
+    double start_s = tv.tv_sec;
+    double start_us = tv.tv_usec;
+    double start_elapsed_us = (start_s * 1000000) + start_us;
+
 
     /* create threads to apply laplacian filter */
     for (int i=0; i<LAPLACIAN_THREADS; i++) {
@@ -130,8 +136,18 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         pthread_join(*tid, NULL);
     }
 
+    gettimeofday(&tv, NULL);
+    double end_s = tv.tv_sec;
+    double end_us = tv.tv_usec;
+    double end_elapsed_us = (end_s * 1000000) + end_us;
 
-    // TODO: elapsedTime += x
+    // bro idk why this shit doesnt work idkidkidk
+    *elapsedTime = end_elapsed_us - start_elapsed_us;
+    printf("ttime: %lf\n", *elapsedTime);
+    printf("tt1me: %lf\n", end_elapsed_us - start_elapsed_us);
+    printf("\tsec: %lf\n", end_s-start_s);
+    printf("\tse: %lf\n", start_elapsed_us);
+    printf("\tee: %lf\n", end_elapsed_us);
     return result;
 }
 
@@ -344,11 +360,15 @@ void *manage_image_file(void *args) {
     struct file_name_args *file = (struct file_name_args*)args;
     unsigned long width = 0;
     unsigned long height = 0;
+    double elapsed_time;
     PPMPixel *image, *result;
 
     image = read_image(file->input_file_name, &width, &height);
-    result = apply_filters(image, width, height, NULL); // elapsed time here
+    result = apply_filters(image, width, height, &elapsed_time);
     write_image(result, file->output_file_name, width, height);
+    pthread_mutex_lock(&mutex);
+    total_elapsed_time += elapsed_time;
+    pthread_mutex_unlock(&mutex);
 
     free(image);
     free(result);
@@ -395,8 +415,7 @@ int main(int argc, char *argv[]) {
     free(tids);
     free(files);
 
-    // TODO: print elapsed time
-    // TODO: write atexit function
+    printf("Elapsed time: %lf\n", total_elapsed_time);
     return 0;
 }
 
