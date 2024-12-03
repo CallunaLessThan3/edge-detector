@@ -14,7 +14,6 @@
 #define PIXEL_SIZE (3)
 
 static const char PPM_SIG[] = "P6";
-static const char USAGE[] = "Usage: ./edge_detector filename[s]\n";
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {
@@ -67,6 +66,7 @@ void *compute_laplacian_threadfn(void *params) {
         // iterate over filter
         for (size_t fw_i=0; fw_i < FILTER_WIDTH; fw_i++) {
             for (size_t fh_i=0; fh_i < FILTER_HEIGHT; fh_i++) {
+                // do math
                 int x_coordinate = (iteratorImageWidth - FILTER_WIDTH / 2 + fw_i + t_args->w) % t_args->w;
                 int y_coordinate = (iteratorImageHeight - FILTER_HEIGHT / 2 + fh_i + t_args->h) % t_args->h;
 
@@ -105,12 +105,12 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
     const int work = h/LAPLACIAN_THREADS;
     PPMPixel *result = malloc(w * h * PIXEL_SIZE);
     struct timeval tv;
+    const size_t us_in_s = 1000000;
     int err;
 
+
     gettimeofday(&tv, NULL);
-    double start_s = tv.tv_sec;
-    double start_us = tv.tv_usec;
-    double start_elapsed_us = (start_s * 1000000) + start_us;
+    double start_elapsed_us = (tv.tv_sec * us_in_s) + tv.tv_usec;
 
 
     /* create threads to apply laplacian filter */
@@ -129,7 +129,7 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
         // create threads
         err = pthread_create(tid, NULL, compute_laplacian_threadfn, t_args);
         if (err != 0) {
-            perror("error creating threads (compute_laplacian_threadfn)");
+            perror("error creating threads in apply_filters");
             exit(EXIT_FAILURE);
         }
 
@@ -137,17 +137,9 @@ PPMPixel *apply_filters(PPMPixel *image, unsigned long w, unsigned long h, doubl
     }
 
     gettimeofday(&tv, NULL);
-    double end_s = tv.tv_sec;
-    double end_us = tv.tv_usec;
-    double end_elapsed_us = (end_s * 1000000) + end_us;
+    double end_elapsed_us = (tv.tv_sec * us_in_s) + tv.tv_usec;
 
-    // bro idk why this shit doesnt work idkidkidk
-    *elapsedTime = end_elapsed_us - start_elapsed_us;
-    printf("ttime: %lf\n", *elapsedTime);
-    printf("tt1me: %lf\n", end_elapsed_us - start_elapsed_us);
-    printf("\tsec: %lf\n", end_s-start_s);
-    printf("\tse: %lf\n", start_elapsed_us);
-    printf("\tee: %lf\n", end_elapsed_us);
+    *elapsedTime = (end_elapsed_us - start_elapsed_us) / us_in_s;
     return result;
 }
 
@@ -165,10 +157,11 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     const size_t pixels = width * height;
     int count;
 
+    /* open image */
     const char *modes = "w";
     FILE *file = fopen(filename, modes);
     if (!file) {
-        perror("error opening file");
+        perror("error opening file for writing");
         exit(EXIT_FAILURE);
     }
 
@@ -179,7 +172,7 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
 
     count = fwrite(header, sizeof(char), header_len, file);
     if (count != header_len) {
-        perror("error writing data");
+        perror("error writing header data to file");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -189,7 +182,7 @@ void write_image(PPMPixel *image, char *filename, unsigned long int width, unsig
     /* write image data */
     count = fwrite(image, PIXEL_SIZE, pixels, file);
     if (count != pixels) {
-        perror("error writing data");
+        perror("error writing image data to file");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -241,10 +234,11 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     const size_t max_cv_len = 3;
     int count;
 
+    /* open file */
     const char *modes = "r";
     FILE *file = fopen(filename, modes);
     if (!file) {
-        perror("error opening file");
+        perror("error opening file for reading");
         exit(EXIT_FAILURE);
     }
 
@@ -261,7 +255,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
     /* check image format matches */
     if(strcmp(fmt, PPM_SIG)) {
-        fprintf(stderr, "not a ppm file");
+        fprintf(stderr, "input is not a ppm file");
         exit(EXIT_FAILURE);
     }
 
@@ -281,7 +275,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
     count = fread(width_s, sizeof(char), width_l, file);
     if (count != width_l) {
-        perror("error reading width");
+        perror("error reading width from file");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -303,7 +297,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
 
     count = fread(height_s, sizeof(char), height_l, file);
     if (count != height_l) {
-        perror("error reading height");
+        perror("error reading height from file");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -318,7 +312,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     char *max_cv_s = calloc(max_cv_len+1, sizeof(char));
     count = fread(max_cv_s, sizeof(char), max_cv_len, file);
     if (count != max_cv_len) {
-        perror("error reading maximum color value");
+        perror("error reading maximum color value from file");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -326,7 +320,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     free(max_cv_s);
 
     if (max_cv != RGB_COMPONENT_COLOR) {
-        fprintf(stderr, "not rgb");
+        fprintf(stderr, "improper maximum color value");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -339,7 +333,7 @@ PPMPixel *read_image(const char *filename, unsigned long int *width, unsigned lo
     PPMPixel *img = malloc(pixels * PIXEL_SIZE);
     count = fread(img, PIXEL_SIZE, pixels, file);
     if (count != pixels) {
-        perror("error reading image data");
+        perror("error reading image data from file");
         fclose(file);
         exit(EXIT_FAILURE);
     }
@@ -385,7 +379,7 @@ void *manage_image_file(void *args) {
 int main(int argc, char *argv[]) {
     int err;
     if (argc < 2) {
-        fprintf(stderr, "Error: Not enough arguments.\n%s", USAGE);
+        fprintf(stderr, "Error: Not enough arguments.\nUsage: ./edge_detector filename[s]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -405,7 +399,7 @@ int main(int argc, char *argv[]) {
 
         err = pthread_create(tid, NULL, manage_image_file, file);
         if (err != 0) {
-            perror("error creating threads (manage_image_file)");
+            perror("error creating threads in main");
             exit(EXIT_FAILURE);
         }
 
@@ -415,7 +409,7 @@ int main(int argc, char *argv[]) {
     free(tids);
     free(files);
 
-    printf("Elapsed time: %lf\n", total_elapsed_time);
+    printf("Elapsed time: %lf seconds\n", total_elapsed_time);
     return 0;
 }
 
