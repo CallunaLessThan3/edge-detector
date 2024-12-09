@@ -10,4 +10,4 @@ edge_detector: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
-	rm -rf *.o main
+	rm -rf *.o edge_detector
